@@ -2,35 +2,77 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	
-	"github.com/Amber-JY/DBProjectHust/config"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
-
-	log "github.com/sirupsen/logrus"
+	"github.com/go-pg/pg"
+	"github.com/go-pg/pg/orm"
+	"github.com/gpmgo/gopm/modules/log"
+	"net/http"
 )
+func createTables() {
 
-func main(){
-	// 命令行输入dbname， password
-	dbLoginName := flag.String("loginName", "root", "用户名")
-	dbPassword := flag.String("loginPassword", "", "密码")
+	for _, model := range []interface{}{&UserInfo{}, &UserBalanceEvent{}, &PlanInfo{}} {
+		err := db.CreateTable(model, &orm.CreateTableOptions{
+			IfNotExists: true,
+		})
+
+		if err != nil {
+			panic("Unable to create table: " + err.Error())
+		}
+	}
+}
+
+func tryCreateRootAccount(password string) {
+	u := UserInfo{Id: ROOT_UID}
+	err := db.Select(&u)
+
+	if err != nil {
+		if err.Error() == PG_NOT_FOUND_ERR {
+			// root not existing
+			// create root account
+			u.Password = passwordSaltedHash(password, PasswordSalt)
+			u.Name = "root"
+			u.Permissions = RolesPermission[ROLE_ADMIN]
+			u.Email = "root@recolic.net"
+			err2 := db.Insert(&u)
+			if err2 != nil {
+				panic("Unable to insert root record. " + err2.Error())
+			}
+		} else {
+			panic("Unable to select root record. " + err.Error())
+		}
+	}
+}
+
+func main() {
+	initAuthModule()
+	InitCommon()
+	log.Verbose = true
+
+	dbUsername := flag.String("user", "postgres", "Username for PostgreSQL.")
+	dbAddr := flag.String("addr", "127.0.0.1:5432", "Address for PostgreSQL.")
+	dbPswd := flag.String("password", "", "Password for PostgreSQL.")
+	httpBindAddr := flag.String("listen", ":80", "Listen address for http server.")
+	defaultRootPassword := flag.String("root-password", "P@ssw0rd", "For first-time launch, set this parameter to set root password.")
+
 	flag.Parse()
 
-	if *dbPassword == "" {
-		log.Error("the password is empty.")
-		return
+	log.Info("Connecting PostgreSQL %s as %s...", *dbAddr, *dbUsername)
+	db = pg.Connect(&pg.Options{
+		User:     *dbUsername,
+		Addr:     *dbAddr,
+		Password: *dbPswd,
+	})
+	defer db.Close()
+
+	// create table if not exist
+	createTables()
+
+	tryCreateRootAccount(*defaultRootPassword)
+
+	log.Info("HTTP listening %s.", *httpBindAddr)
+	http.HandleFunc("/", HttpApiFunc)
+	err := http.ListenAndServe(*httpBindAddr, nil)
+
+	if err != nil {
+		panic(err.Error())
 	}
-
-	log.Info("Connectint to mysql as %s", dbLoginName)
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/EBill?charset=utf8mb4&parseTime=True&loc=Local", 
-		*dbLoginName, *dbPassword, config.DbIP, config.DbPort)
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil{
-		log.Error(err)
-		return
-	}
-
-
-
 }
