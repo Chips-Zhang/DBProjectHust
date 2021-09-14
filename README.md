@@ -1,6 +1,6 @@
 # HUST DATABASE LAB
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/recolic/hust-database)](https://goreportcard.com/report/github.com/recolic/hust-database)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Chips-zhang/DBProjectHust)](https://goreportcard.com/report/github.com/Chips-zhang/DBProjectHust)
 ![Codebuild Status](https://codebuild.us-west-1.amazonaws.com/badges?uuid=eyJlbmNyeXB0ZWREYXRhIjoibVFyaTh1MWx0cFUxQ1dxZ2ZleS90OVJlZU9IOGtJUU5zd3lSd0VYSXNpN3I5am9sN25iN3RDQkMvY1Bpb2tVWldoaTBVaE9SQ0tGWU1DeUJwaFFhZUJJPSIsIml2UGFyYW1ldGVyU3BlYyI6IjZ5WktiVEV5Sk5mM3M4eU0iLCJtYXRlcmlhbFNldFNlcmlhbCI6MX0%3D&branch=master)
 
 ## 题目1：电信收费管理系统
