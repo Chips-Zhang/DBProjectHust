@@ -2,15 +2,19 @@ package main
 
 import (
 	"flag"
+	"log"
+	"net/http"
+
+	"github.com/Chips-zhang/DBProjectHust/service"
+	"github.com/Chips-zhang/DBProjectHust/tools"
 	"github.com/go-pg/pg"
 	"github.com/go-pg/pg/orm"
-	"github.com/gpmgo/gopm/modules/log"
-	"net/http"
 )
+
 func createTables() {
 
-	for _, model := range []interface{}{&UserInfo{}, &UserBalanceEvent{}, &PlanInfo{}} {
-		err := db.CreateTable(model, &orm.CreateTableOptions{
+	for _, model := range []interface{}{&tools.UserInfo{}, &tools.UserBalanceEvent{}, &tools.PlanInfo{}} {
+		err := tools.DB_.CreateTable(model, &orm.CreateTableOptions{
 			IfNotExists: true,
 		})
 
@@ -21,18 +25,18 @@ func createTables() {
 }
 
 func tryCreateRootAccount(password string) {
-	u := UserInfo{Id: ROOT_UID}
-	err := db.Select(&u)
+	u := tools.UserInfo{Id: tools.RootUid}
+	err := tools.DB_.Select(&u)
 
 	if err != nil {
-		if err.Error() == PG_NOT_FOUND_ERR {
+		if err.Error() == tools.PgNotFoundErr {
 			// root not existing
 			// create root account
-			u.Password = passwordSaltedHash(password, PasswordSalt)
+			u.Password = tools.PasswordSaltedHash(password, tools.PasswordSalt)
 			u.Name = "root"
-			u.Permissions = RolesPermission[ROLE_ADMIN]
+			u.Permissions = tools.RolesPermission[tools.RoleAdmin]
 			u.Email = "root@recolic.net"
-			err2 := db.Insert(&u)
+			err2 := tools.DB_.Insert(&u)
 			if err2 != nil {
 				panic("Unable to insert root record. " + err2.Error())
 			}
@@ -43,10 +47,8 @@ func tryCreateRootAccount(password string) {
 }
 
 func main() {
-	initAuthModule()
-	InitCommon()
-	log.Verbose = true
-
+	tools.InitAuthModule()
+	tools.InitCommon()
 	dbUsername := flag.String("user", "postgres", "Username for PostgreSQL.")
 	dbAddr := flag.String("addr", "127.0.0.1:5432", "Address for PostgreSQL.")
 	dbPswd := flag.String("password", "", "Password for PostgreSQL.")
@@ -55,21 +57,21 @@ func main() {
 
 	flag.Parse()
 
-	log.Info("Connecting PostgreSQL %s as %s...", *dbAddr, *dbUsername)
-	db = pg.Connect(&pg.Options{
+	log.Printf("Connecting PostgreSQL %s as %s...", *dbAddr, *dbUsername)
+	tools.DB_ = pg.Connect(&pg.Options{
 		User:     *dbUsername,
 		Addr:     *dbAddr,
 		Password: *dbPswd,
 	})
-	defer db.Close()
+	defer tools.DB_.Close()
 
 	// create table if not exist
 	createTables()
 
 	tryCreateRootAccount(*defaultRootPassword)
 
-	log.Info("HTTP listening %s.", *httpBindAddr)
-	http.HandleFunc("/", HttpApiFunc)
+	log.Printf("HTTP listening %s.", *httpBindAddr)
+	http.HandleFunc("/", service.HttpApiFunc)
 	err := http.ListenAndServe(*httpBindAddr, nil)
 
 	if err != nil {

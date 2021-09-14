@@ -1,25 +1,25 @@
-package main
+package tools
 
 import "testing"
 
 func TestMoney(t *testing.T) {
-	stringAndMoney := map[string]money_t{
-		"1.23":    money_t(123),
-		"0.01":    money_t(1),
-		"1122.33": money_t(112233),
-		"0.11":    money_t(11),
-		"0.00":    money_t(0),
-		"-13.33":  money_t(-1333),
-		"-0.01":   money_t(-1),
+	stringAndMoney := map[string]MoneyT{
+		"1.23":    MoneyT(123),
+		"0.01":    MoneyT(1),
+		"1122.33": MoneyT(112233),
+		"0.11":    MoneyT(11),
+		"0.00":    MoneyT(0),
+		"-13.33":  MoneyT(-1333),
+		"-0.01":   MoneyT(-1),
 	}
-	mStringAndMoney := map[string]money_t{
-		"1.233":    money_t(123),
-		"0.01001":    money_t(1),
-		"1122.3": money_t(112230),
-		"":    money_t(0),
-		"0":    money_t(0),
-		"-13.3321412":  money_t(-1333),
-		"-1":   money_t(-100),
+	mStringAndMoney := map[string]MoneyT{
+		"1.233":       MoneyT(123),
+		"0.01001":     MoneyT(1),
+		"1122.3":      MoneyT(112230),
+		"":            MoneyT(0),
+		"0":           MoneyT(0),
+		"-13.3321412": MoneyT(-1333),
+		"-1":          MoneyT(-100),
 	}
 
 	for str, money := range stringAndMoney {

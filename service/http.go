@@ -1,7 +1,9 @@
-package main
+package service
 
 import (
-	"github.com/gpmgo/gopm/modules/log"
+	"github.com/Chips-zhang/DBProjectHust/tools"
+
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -30,9 +32,9 @@ func httpApiFuncImpl(w http.ResponseWriter, r *http.Request) (int, string) {
 	apiMethod := strings.Split(uri, "?")[0][1:]
 	apiArgs := r.URL.Query()
 
-	log.Info("API %s", apiMethod)
+	log.Printf("API %s", apiMethod)
 
-	commiterUid := uid_t(-1)
+	commiterUid := tools.UidT(-1)
 	token := ""
 	if apiMethod != "Login" && apiMethod != "ForgetPassword" && apiMethod != "ChangePassword" {
 		// Login don't need token.
@@ -49,7 +51,7 @@ func httpApiFuncImpl(w http.ResponseWriter, r *http.Request) (int, string) {
 			return 403, "Missing token."
 		}
 
-		uid, err := VerifyToken(token)
+		uid, err := tools.VerifyToken(token)
 		if err != nil {
 			return 403, "Invalid token. " + err.Error()
 		}
@@ -61,7 +63,7 @@ func httpApiFuncImpl(w http.ResponseWriter, r *http.Request) (int, string) {
 		if lack, ok := apiExistArgs(apiArgs, "name", "password"); !ok {
 			return 400, "Required argument '" + lack + "' not defined."
 		}
-		token, err := DoLogin(apiArgs["name"][0], apiArgs["password"][0])
+		token, err := tools.DoLogin(apiArgs["name"][0], apiArgs["password"][0])
 		if err != nil {
 			return 500, "Server API error: " + err.Error()
 		} else {
@@ -70,7 +72,7 @@ func httpApiFuncImpl(w http.ResponseWriter, r *http.Request) (int, string) {
 			return 200, "token=" + token
 		}
 	case "Logout":
-		err := DoLogout(token)
+		err := tools.DoLogout(token)
 		if err != nil {
 			return 500, "Server API error: " + err.Error()
 		} else {
@@ -82,8 +84,7 @@ func httpApiFuncImpl(w http.ResponseWriter, r *http.Request) (int, string) {
 		if lack, ok := apiExistArgs(apiArgs, "name", "password", "role", "email"); !ok {
 			return 400, "Required argument '" + lack + "' not defined."
 		}
-		uid, err := Add
-		User(commiterUid, apiArgs["name"][0], apiArgs["password"][0], apiArgs["role"][0], apiArgs["email"][0])
+		uid, err := AddUser(commiterUid, apiArgs["name"][0], apiArgs["password"][0], apiArgs["role"][0], apiArgs["email"][0])
 		if err != nil {
 			return 500, "Server API error: " + err.Error()
 		} else {
@@ -168,7 +169,7 @@ func httpApiFuncImpl(w http.ResponseWriter, r *http.Request) (int, string) {
 		if err != nil {
 			return 500, "Server API error: " + err.Error()
 		} else {
-			_ = DoLogout(token)
+			_ = tools.DoLogout(token)
 			return 200, "status=ok"
 		}
 	case "ListAllUserInfo":
@@ -189,7 +190,7 @@ func httpApiFuncImpl(w http.ResponseWriter, r *http.Request) (int, string) {
 		if lack, ok := apiExistArgs(apiArgs, "email", "domain", "proto"); !ok {
 			return 400, "Required argument '" + lack + "' not defined."
 		}
-		err := ForgetPassword(apiArgs["email"][0], apiArgs["domain"][0], apiArgs["proto"][0])
+		err := tools.ForgetPassword(apiArgs["email"][0], apiArgs["domain"][0], apiArgs["proto"][0])
 		if err != nil {
 			return 500, "Server API error: " + err.Error()
 		} else {
@@ -199,7 +200,7 @@ func httpApiFuncImpl(w http.ResponseWriter, r *http.Request) (int, string) {
 		if lack, ok := apiExistArgs(apiArgs, "old", "new", "name"); !ok {
 			return 400, "Required argument '" + lack + "' not defined."
 		}
-		err := ChangePassword(apiArgs["name"][0], apiArgs["old"][0], apiArgs["new"][0])
+		err := tools.ChangePassword(apiArgs["name"][0], apiArgs["old"][0], apiArgs["new"][0])
 		if err != nil {
 			return 500, "Server API error: " + err.Error()
 		} else {

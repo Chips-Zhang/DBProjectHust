@@ -1,29 +1,31 @@
-package main
+package tools
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/gpmgo/gopm/modules/log"
+	"log"
 	"math/rand"
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/Chips-zhang/DBProjectHust/service"
 )
 
-func passwordSaltedHash(password, salt string) string {
+func PasswordSaltedHash(password, salt string) string {
 	h := sha256.New()
 	h.Write([]byte(salt + password + salt))
 
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func checkPassword(id uid_t, password string) error {
+func CheckPassword(id UidT, password string) error {
 	u := UserInfo{
 		Id: id,
 	}
-	err := db.Select(&u)
+	err := DB_.Select(&u)
 	if err != nil {
 		return err
 	}
@@ -34,18 +36,18 @@ func checkPassword(id uid_t, password string) error {
 	return nil
 }
 
-var tokenUidMap map[string]uid_t
+var tokenUidMap map[string]UidT
 
-func initAuthModule() {
-	tokenUidMap = make(map[string]uid_t)
+func InitAuthModule() {
+	tokenUidMap = make(map[string]UidT)
 	rand.Seed(time.Now().UnixNano())
 }
 
-func generateToken() string {
+func GenerateToken() string {
 	timestamp := time.Now().Unix() + rand.Int63()
 	token := fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.FormatInt(timestamp, 10))))[:45]
 	if _, ok := tokenUidMap[token]; ok {
-		return generateToken()
+		return GenerateToken()
 	} else {
 		return token
 	}
@@ -61,7 +63,7 @@ func DoLogin(username, password string) (string, error) {
 		return "", errors.New("Password denied.")
 	}
 
-	token := generateToken()
+	token := GenerateToken()
 	tokenUidMap[token] = u.Id
 	return token, nil
 }
@@ -75,7 +77,7 @@ func DoLogout(token string) error {
 	}
 }
 
-func VerifyToken(token string) (uid_t, error) {
+func VerifyToken(token string) (UidT, error) {
 	if val, ok := tokenUidMap[token]; ok {
 		return val, nil
 	} else {
@@ -90,9 +92,9 @@ func ForgetPassword(email, domain, proto string) error {
 	if !UsernameRegex.MatchString(email) {
 		return errors.New("Invalid email format.")
 	}
-	err := db.Model(&u).Where("email = '" + email + "'").Select()
+	err := DB_.Model(&u).Where("email = '" + email + "'").Select()
 	if err != nil {
-		if err.Error() == PG_NOT_FOUND_ERR {
+		if err.Error() == PgNotFoundErr {
 			return errors.New("Email not found.")
 		}
 		return err
@@ -105,11 +107,11 @@ func ForgetPassword(email, domain, proto string) error {
 	emailTxt := fmt.Sprintf("Your username is %s. Use the following link to reset your password:\n %s//%s/changePassword.html?old=%s&name=%s\n\nTMobile",
 		u.Name, proto, domain, u.Password, u.Name)
 	go func() {
-		err := SendEmail(email, "TMobile password reset", emailTxt)
+		err := service.SendEmail(email, "TMobile password reset", emailTxt)
 		if err == nil {
-			log.Info("Sent email to " + email)
+			log.Print("Sent email to " + email)
 		} else {
-			log.Info("Unable to send email to " + email + ", " + err.Error())
+			log.Print("Unable to send email to " + email + ", " + err.Error())
 		}
 	}()
 
@@ -127,6 +129,6 @@ func ChangePassword(name, old, new string) error {
 	}
 	u.Password = new
 
-	err2 := db.Update(&u)
+	err2 := DB_.Update(&u)
 	return err2
 }

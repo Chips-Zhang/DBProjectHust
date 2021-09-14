@@ -1,32 +1,34 @@
-package main
+package service
 
 import (
 	"errors"
 	"fmt"
-	"github.com/go-pg/pg"
-	"github.com/go-pg/pg/orm"
 	"strconv"
 	"strings"
+
+	"github.com/Chips-zhang/DBProjectHust/tools"
+	"github.com/go-pg/pg"
+	"github.com/go-pg/pg/orm"
 )
 
-func checkUserUpdatePermission(commiter uid_t, updatedUserPerm []string) bool {
+func checkUserUpdatePermission(commiter tools.UidT, updatedUserPerm []string) bool {
 	updatedUserIsCustomer := true
-	if ArrayContains(updatedUserPerm, PERM_ADMIN) ||
-		ArrayContains(updatedUserPerm, PERM_CASHIER) ||
-		ArrayContains(updatedUserPerm, PERM_CUSTOMER_SERV) {
+	if tools.ArrayContains(updatedUserPerm, tools.PermAdmin) ||
+		tools.ArrayContains(updatedUserPerm, tools.PermCashier) ||
+		tools.ArrayContains(updatedUserPerm, tools.PermCustomerServ) {
 		updatedUserIsCustomer = false
 	}
 
-	if commiter != ROOT_UID {
+	if commiter != tools.RootUid {
 		// if uid is 1(root), just skip all check. so that system can create uid 1 without permission.
 		if !updatedUserIsCustomer {
 			// Admin can create non-customer user.
-			if CheckPermission(commiter, PERM_ADMIN) == false {
+			if tools.CheckPermission(commiter, tools.PermAdmin) == false {
 				return false
 			}
 		} else {
 			// costomer_serv can create customer user.
-			if CheckPermission(commiter, PERM_CUSTOMER_SERV) == false {
+			if tools.CheckPermission(commiter, tools.PermCustomerServ) == false {
 				return false
 			}
 		}
@@ -34,7 +36,7 @@ func checkUserUpdatePermission(commiter uid_t, updatedUserPerm []string) bool {
 	return true
 }
 
-func AddUser(commiter uid_t, name, password, permissions, email string) (uid_t, error) {
+func AddUser(commiter tools.UidT, name, password, permissions, email string) (tools.UidT, error) {
 	// password is already salted-hashed in client.
 	// TODO: role maybe a comma-seperated string as permission list.
 	perm := strings.Split(permissions, ",")
@@ -42,10 +44,10 @@ func AddUser(commiter uid_t, name, password, permissions, email string) (uid_t, 
 		return -1, errors.New("Permission denied.")
 	}
 
-	newUid := uid_t(0)
+	newUid := tools.UidT(0)
 
-	err := db.RunInTransaction(func(tx *pg.Tx) error {
-		u := UserInfo{
+	err := tools.DB_.RunInTransaction(func(tx *pg.Tx) error {
+		u := tools.UserInfo{
 			Name:         name,
 			Password:     password,
 			Permissions:  perm,
@@ -60,9 +62,9 @@ func AddUser(commiter uid_t, name, password, permissions, email string) (uid_t, 
 		}
 		newUid = u.Id
 
-		if ArrayContains(perm, PERM_CUSTOMER) {
+		if tools.ArrayContains(perm, tools.PermCustomer) {
 			// The CustomerService is introducing new customer. Give him salary!
-			commiter := UserInfo{
+			commiter := tools.UserInfo{
 				Id: commiter,
 			}
 			err2 := tx.Select(&commiter)
@@ -70,7 +72,7 @@ func AddUser(commiter uid_t, name, password, permissions, email string) (uid_t, 
 				return err2
 			}
 
-			commiter.Achievements += EARNING_PER_ADDUSER
+			commiter.Achievements += tools.EarningPerAdduser
 			return tx.Update(&commiter)
 		} else {
 			return nil
@@ -80,8 +82,8 @@ func AddUser(commiter uid_t, name, password, permissions, email string) (uid_t, 
 	return newUid, err
 }
 
-func RemoveUser(commiter uid_t, fuckedUsername string) error {
-	fuckedUser, err := UsernameToInfo(fuckedUsername)
+func RemoveUser(commiter tools.UidT, fuckedUsername string) error {
+	fuckedUser, err := tools.UsernameToInfo(fuckedUsername)
 	if err != nil {
 		return err
 	}
@@ -90,25 +92,25 @@ func RemoveUser(commiter uid_t, fuckedUsername string) error {
 		return errors.New("Permission denied.")
 	}
 
-	return db.Delete(&UserInfo{Id: fuckedUser.Id})
+	return tools.DB_.Delete(&tools.UserInfo{Id: fuckedUser.Id})
 }
 
-func AddPlan(commiter uid_t, planName string, planPriceStr string) (planid_t, error) {
-	if CheckPermission(commiter, PERM_CUSTOMER_SERV) == false {
+func AddPlan(commiter tools.UidT, planName string, planPriceStr string) (tools.PlanidT, error) {
+	if tools.CheckPermission(commiter, tools.PermCustomerServ) == false {
 		return -1, errors.New("Permission denied")
 	}
 
-	planPrice, err0 := StringToMoneyT(planPriceStr)
+	planPrice, err0 := tools.StringToMoneyT(planPriceStr)
 	if err0 != nil {
 		return -1, err0
 	}
 
-	p := PlanInfo{
+	p := tools.PlanInfo{
 		Name:  planName,
 		Price: planPrice,
 	}
 
-	err := db.Insert(&p)
+	err := tools.DB_.Insert(&p)
 	if err != nil {
 		return -1, err
 	}
@@ -116,19 +118,19 @@ func AddPlan(commiter uid_t, planName string, planPriceStr string) (planid_t, er
 	return p.Id, nil
 }
 
-func RemovePlan(commiter uid_t, fuckedPlanname string) error {
-	fucked, err := PlannameToInfo(fuckedPlanname)
+func RemovePlan(commiter tools.UidT, fuckedPlanname string) error {
+	fucked, err := tools.PlannameToInfo(fuckedPlanname)
 	if err != nil {
 		return err
 	}
 
-	if CheckPermission(commiter, PERM_CUSTOMER_SERV) == false {
+	if tools.CheckPermission(commiter, tools.PermCustomerServ) == false {
 		return errors.New("Permission denied.")
 	}
 
-	var userUsingThisPlan []UserInfo
-	err = db.Model(&userUsingThisPlan).Where("plan = " + strconv.FormatInt(int64(fucked.Id), 10)).Select()
-	if err != nil && err.Error() != PG_NOT_FOUND_ERR {
+	var userUsingThisPlan []tools.UserInfo
+	err = tools.DB_.Model(&userUsingThisPlan).Where("plan = " + strconv.FormatInt(int64(fucked.Id), 10)).Select()
+	if err != nil && err.Error() != tools.PgNotFoundErr {
 		return err
 	}
 
@@ -136,64 +138,64 @@ func RemovePlan(commiter uid_t, fuckedPlanname string) error {
 		return errors.New("The plan is still in use by some user: " + userUsingThisPlan[0].Name)
 	}
 
-	return db.Delete(&PlanInfo{Id: fucked.Id})
+	return tools.DB_.Delete(&tools.PlanInfo{Id: fucked.Id})
 }
 
-func UpdateUserPlan(commiter uid_t, fuckedUsername string, planName string) error {
-	if CheckPermission(commiter, PERM_CUSTOMER_SERV) == false {
+func UpdateUserPlan(commiter tools.UidT, fuckedUsername string, planName string) error {
+	if tools.CheckPermission(commiter, tools.PermCustomerServ) == false {
 		return errors.New("Permission denied.")
 	}
 
-	u, err := UsernameToInfo(fuckedUsername)
+	u, err := tools.UsernameToInfo(fuckedUsername)
 	if err != nil {
 		return err
 	}
 
-	if CheckPermission(u.Id, PERM_CUSTOMER) == false {
+	if tools.CheckPermission(u.Id, tools.PermCustomer) == false {
 		return errors.New("Only customer can have a plan.")
 	}
 
-	newPlan, err2 := PlannameToInfo(planName)
+	newPlan, err2 := tools.PlannameToInfo(planName)
 	if err2 != nil {
 		return err2
 	}
 
 	u.Plan = newPlan.Id
 
-	return db.Update(&u)
+	return tools.DB_.Update(&u)
 }
 
-func UpdateUserBalance(commiter uid_t, customerUsername string, balanceChangeStr string) error {
-	if CheckPermission(commiter, PERM_CASHIER) == false {
+func UpdateUserBalance(commiter tools.UidT, customerUsername string, balanceChangeStr string) error {
+	if tools.CheckPermission(commiter, tools.PermCashier) == false {
 		return errors.New("Permission denied.")
 	}
 
-	balanceChange, err0 := StringToMoneyT(balanceChangeStr)
+	balanceChange, err0 := tools.StringToMoneyT(balanceChangeStr)
 	if err0 != nil {
 		return err0
 	}
 
-	u, err := UsernameToInfo(customerUsername)
+	u, err := tools.UsernameToInfo(customerUsername)
 	if err != nil {
 		return err
 	}
 
-	if CheckPermission(u.Id, PERM_CUSTOMER) == false {
+	if tools.CheckPermission(u.Id, tools.PermCustomer) == false {
 		return errors.New("Only customer can be updated balance.")
 	}
 
 	// Pull commiter and customer info.
 
-	cashier := UserInfo{
+	cashier := tools.UserInfo{
 		Id: commiter,
 	}
-	err1 := db.Select(&cashier)
+	err1 := tools.DB_.Select(&cashier)
 	if err1 != nil {
 		return err1
 	}
 
 	// Prepare event
-	event := UserBalanceEvent{
+	event := tools.UserBalanceEvent{
 		UId: u.Id,
 		What: fmt.Sprintf("balance_update %s from %s to %s by %d",
 			balanceChange.String(), u.Balance.String(), (u.Balance + balanceChange).String(), commiter),
@@ -205,7 +207,7 @@ func UpdateUserBalance(commiter uid_t, customerUsername string, balanceChangeStr
 		cashier.Achievements += balanceChange
 	}
 
-	err2 := db.RunInTransaction(func(tx *pg.Tx) error {
+	err2 := tools.DB_.RunInTransaction(func(tx *pg.Tx) error {
 		err := tx.Update(&u)
 		if err != nil {
 			return err
@@ -222,20 +224,20 @@ func UpdateUserBalance(commiter uid_t, customerUsername string, balanceChangeStr
 	return err2
 }
 
-func QueryUserInfo(commiter uid_t, usernameToQuery string) (string, error) {
-	u, err := UsernameToInfo(usernameToQuery)
+func QueryUserInfo(commiter tools.UidT, usernameToQuery string) (string, error) {
+	u, err := tools.UsernameToInfo(usernameToQuery)
 	if err != nil {
 		return "", err
 	}
 
 	if u.Id != commiter {
-		if CheckPermission(commiter, PERM_CUSTOMER_SERV) == false {
+		if tools.CheckPermission(commiter, tools.PermCustomerServ) == false {
 			return "", errors.New("Permission denied.")
 		}
 	}
 
-	p := PlanInfo{Id: u.Plan}
-	err2 := db.Select(&p)
+	p := tools.PlanInfo{Id: u.Plan}
+	err2 := tools.DB_.Select(&p)
 	if u.Plan != 0 && err2 != nil {
 		return "", err2
 	}
@@ -245,22 +247,22 @@ func QueryUserInfo(commiter uid_t, usernameToQuery string) (string, error) {
 		p.Name, p.Price.String()), nil
 }
 
-func QueryBalanceLog(commiter uid_t, usernameToQuery string) (string, error) {
-	u, err := UsernameToInfo(usernameToQuery)
+func QueryBalanceLog(commiter tools.UidT, usernameToQuery string) (string, error) {
+	u, err := tools.UsernameToInfo(usernameToQuery)
 	if err != nil {
 		return "", err
 	}
 
 	if u.Id != commiter {
-		if CheckPermission(commiter, PERM_CUSTOMER_SERV) == false {
+		if tools.CheckPermission(commiter, tools.PermCustomerServ) == false {
 			return "", errors.New("Permission denied.")
 		}
 	}
 
-	var events []UserBalanceEvent
-	err2 := db.Model(&events).Where(fmt.Sprintf("u_id = %d", u.Id)).Select()
+	var events []tools.UserBalanceEvent
+	err2 := tools.DB_.Model(&events).Where(fmt.Sprintf("u_id = %d", u.Id)).Select()
 	if err2 != nil {
-		if err2.Error() == PG_NOT_FOUND_ERR {
+		if err2.Error() == tools.PgNotFoundErr {
 			return "events=", nil
 		} else {
 			return "", err2
@@ -275,13 +277,13 @@ func QueryBalanceLog(commiter uid_t, usernameToQuery string) (string, error) {
 	return "events=" + strings.Join(eventStrs, "\n"), nil
 }
 
-func ResetDatabase(commiter uid_t, newRootPassword string) error {
-	if CheckPermission(commiter, PERM_ADMIN) == false {
+func ResetDatabase(commiter tools.UidT, newRootPassword string) error {
+	if tools.CheckPermission(commiter, tools.PermAdmin) == false {
 		return errors.New("Permission denied.")
 	}
 
-	err := db.RunInTransaction(func(tx *pg.Tx) error {
-		for _, model := range []interface{}{&UserInfo{}, &UserBalanceEvent{}, &PlanInfo{}} {
+	err := tools.DB_.RunInTransaction(func(tx *pg.Tx) error {
+		for _, model := range []interface{}{&tools.UserInfo{}, &tools.UserBalanceEvent{}, &tools.PlanInfo{}} {
 			err := tx.DropTable(model, &orm.DropTableOptions{
 				IfExists: true,
 				Cascade:  true,
@@ -291,7 +293,7 @@ func ResetDatabase(commiter uid_t, newRootPassword string) error {
 			}
 		}
 
-		for _, model := range []interface{}{&UserInfo{}, &UserBalanceEvent{}, &PlanInfo{}} {
+		for _, model := range []interface{}{&tools.UserInfo{}, &tools.UserBalanceEvent{}, &tools.PlanInfo{}} {
 			err := tx.CreateTable(model, &orm.CreateTableOptions{
 				IfNotExists: true,
 			})
@@ -300,16 +302,16 @@ func ResetDatabase(commiter uid_t, newRootPassword string) error {
 			}
 		}
 
-		u := UserInfo{
+		u := tools.UserInfo{
 			Name:        "root",
-			Permissions: RolesPermission[ROLE_ADMIN],
+			Permissions: tools.RolesPermission[tools.RoleAdmin],
 			Password:    newRootPassword,
 		}
 		err3 := tx.Insert(&u)
 		if err3 != nil {
 			return err3
 		}
-		if u.Id != ROOT_UID {
+		if u.Id != tools.RootUid {
 			return errors.New("ROOT UID is incorrect. Failed to clear db.")
 		}
 		return nil
@@ -318,13 +320,13 @@ func ResetDatabase(commiter uid_t, newRootPassword string) error {
 	return err
 }
 
-func ListAllUserInfo(commiter uid_t) (string, error) {
-	if CheckPermission(commiter, PERM_CUSTOMER_SERV) == false {
+func ListAllUserInfo(commiter tools.UidT) (string, error) {
+	if tools.CheckPermission(commiter, tools.PermCustomerServ) == false {
 		return "", errors.New("Permission denied.")
 	}
 
-	var users []UserInfo
-	err := db.Model(&users).Select()
+	var users []tools.UserInfo
+	err := tools.DB_.Model(&users).Select()
 	if err != nil {
 		return "", err
 	}
@@ -332,8 +334,8 @@ func ListAllUserInfo(commiter uid_t) (string, error) {
 	result := ""
 
 	for _, u := range users {
-		p := PlanInfo{Id: u.Plan}
-		err2 := db.Select(&p)
+		p := tools.PlanInfo{Id: u.Plan}
+		err2 := tools.DB_.Select(&p)
 		if u.Plan != 0 && err2 != nil {
 			return "", err2
 		}
@@ -346,13 +348,13 @@ func ListAllUserInfo(commiter uid_t) (string, error) {
 	return result, nil
 }
 
-func ListAllPlanInfo(commiter uid_t) (string, error) {
-	if CheckPermission(commiter, PERM_CUSTOMER_SERV) == false {
+func ListAllPlanInfo(commiter tools.UidT) (string, error) {
+	if tools.CheckPermission(commiter, tools.PermCustomerServ) == false {
 		return "", errors.New("Permission denied.")
 	}
 
-	var plans []PlanInfo
-	err := db.Model(&plans).Select()
+	var plans []tools.PlanInfo
+	err := tools.DB_.Model(&plans).Select()
 	if err != nil {
 		return "", err
 	}

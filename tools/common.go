@@ -1,31 +1,32 @@
-package main
+package tools
 
 import (
 	"errors"
 	"fmt"
-	"github.com/go-pg/pg"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/go-pg/pg"
 )
 
 const (
-	PERM_ADMIN         = "root"
-	PERM_CASHIER       = "cashier"
-	PERM_CUSTOMER_SERV = "customer_service"
-	PERM_CUSTOMER      = "customer"
-	PERM_PUBLIC        = "public"
+	PermAdmin        = "root"
+	PermCashier      = "cashier"
+	PermCustomerServ = "customer_service"
+	PermCustomer     = "customer"
+	PermPublic       = "public"
 
-	ROLE_ADMIN         = "root"
+	RoleAdmin          = "root"
 	ROLE_CASHIER       = "cashier"
 	ROLE_CUSTOMER      = "customer"
 	ROLE_CUSTOMER_SERV = "customer_service"
 )
 
 const PasswordSalt = "rsalt"
-const ROOT_UID = 1
-const PG_NOT_FOUND_ERR = "pg: no rows in result set"
-const EARNING_PER_ADDUSER = 1000 // Earn 10 dollar for every new customer
+const RootUid = 1
+const PgNotFoundErr = "pg: no rows in result set"
+const EarningPerAdduser = 1000 // Earn 10 dollar for every new customer
 var RolesPermission map[string][]string
 
 var MoneyStrRegex = regexp.MustCompile(`^[0-9]+\.[0-9][0-9]$`)
@@ -33,20 +34,20 @@ var UsernameRegex = regexp.MustCompile(`^[A-Za-z0-9_, @.:;-]*$`)
 
 func InitCommon() {
 	RolesPermission = map[string][]string{
-		"root":     {PERM_ADMIN, PERM_CASHIER, PERM_CUSTOMER_SERV, PERM_CUSTOMER, PERM_PUBLIC},
-		"cash":     {PERM_CASHIER, PERM_PUBLIC},
-		"serv":     {PERM_CUSTOMER_SERV, PERM_PUBLIC},
-		"customer": {PERM_CUSTOMER, PERM_PUBLIC},
+		"root":     {PermAdmin, PermCashier, PermCustomerServ, PermCustomer, PermPublic},
+		"cash":     {PermCashier, PermPublic},
+		"serv":     {PermCustomerServ, PermPublic},
+		"customer": {PermCustomer, PermPublic},
 	}
 }
 
 // common data structure
 
-type uid_t int64
-type money_t int64
-type planid_t int64
+type UidT int64
+type MoneyT int64
+type PlanidT int64
 
-func (m money_t) String() string {
+func (m MoneyT) String() string {
 	symbol := ""
 	high := "0"
 	var low string
@@ -67,7 +68,7 @@ func (m money_t) String() string {
 
 	return fmt.Sprintf("%s%s.%s", symbol, high, low)
 }
-func StringToMoneyT(s string) (money_t, error) {
+func StringToMoneyT(s string) (MoneyT, error) {
 	dotIndex := strings.Index(s, ".")
 	strWithoutDot := ""
 	s += "00"
@@ -80,20 +81,19 @@ func StringToMoneyT(s string) (money_t, error) {
 	if err != nil {
 		return 0, err
 	} else {
-		return money_t(m), nil
+		return MoneyT(m), nil
 	}
 }
 
-
 type UserInfo struct {
-	Id           uid_t  `sql:",pk,unique"`
+	Id           UidT   `sql:",pk,unique"`
 	Name         string `sql:",unique"`
 	Password     string
 	Permissions  []string `sql:",array"`
-	Balance      money_t  // `10.32` is saved as `1032`
-	Achievements money_t
-	Plan         planid_t `sql:",notnull"`
-	Email        string   `sql:",unique"`
+	Balance      MoneyT   // `10.32` is saved as `1032`
+	Achievements MoneyT
+	Plan         PlanidT `sql:",notnull"`
+	Email        string  `sql:",unique"`
 }
 
 func (u UserInfo) String() string {
@@ -101,8 +101,8 @@ func (u UserInfo) String() string {
 }
 
 type UserBalanceEvent struct {
-	EventId uid_t `sql:",pk,unique"`
-	UId     uid_t
+	EventId UidT `sql:",pk,unique"`
+	UId     UidT
 	What    string // should not contain `;`
 }
 
@@ -111,9 +111,9 @@ func (u UserBalanceEvent) String() string {
 }
 
 type PlanInfo struct {
-	Id    planid_t `sql:",pk,unique"`
-	Name  string   `sql:",unique"`
-	Price money_t
+	Id    PlanidT `sql:",pk,unique"`
+	Name  string  `sql:",unique"`
+	Price MoneyT
 }
 
 func (p PlanInfo) String() string {
@@ -122,7 +122,7 @@ func (p PlanInfo) String() string {
 
 // database
 
-var db *pg.DB
+var DB_ *pg.DB
 
 // other common functions
 func ArrayContains(arr []string, item string) bool {
@@ -134,11 +134,11 @@ func ArrayContains(arr []string, item string) bool {
 	return false
 }
 
-func CheckPermission(commiter uid_t, perm string) bool {
+func CheckPermission(commiter UidT, perm string) bool {
 	commiterInfo := UserInfo{
 		Id: commiter,
 	}
-	err := db.Select(&commiterInfo)
+	err := DB_.Select(&commiterInfo)
 	if err != nil {
 		return false
 	}
@@ -154,8 +154,8 @@ func UsernameToInfo(name string) (UserInfo, error) {
 		return UserInfo{}, errors.New("Invalid username format.")
 	}
 	u := UserInfo{}
-	err := db.Model(&u).Where(fmt.Sprintf("name = '%s'", name)).Select()
-	if err != nil && err.Error() == PG_NOT_FOUND_ERR {
+	err := DB_.Model(&u).Where(fmt.Sprintf("name = '%s'", name)).Select()
+	if err != nil && err.Error() == PgNotFoundErr {
 		return u, errors.New("Name not found: " + name)
 	}
 	return u, err
@@ -165,8 +165,8 @@ func PlannameToInfo(name string) (PlanInfo, error) {
 		return PlanInfo{}, errors.New("Invalid planname format.")
 	}
 	u := PlanInfo{}
-	err := db.Model(&u).Where(fmt.Sprintf("name = '%s'", name)).Select()
-	if err != nil && err.Error() == PG_NOT_FOUND_ERR {
+	err := DB_.Model(&u).Where(fmt.Sprintf("name = '%s'", name)).Select()
+	if err != nil && err.Error() == PgNotFoundErr {
 		return u, errors.New("Name not found: " + name)
 	}
 	return u, err
